@@ -1,101 +1,221 @@
-import Image from "next/image";
+"use client";
+
+import { useState } from "react";
+import AppFooter from "@/components/AppFooter";
+import AppHeader from "@/components/AppHeader";
+import CodeInput, { type CodeInputSubmitPayload } from "@/components/CodeInput";
+import CompareInput, { type CompareInputSubmitPayload } from "@/components/CompareInput";
+import CompareResultsPanel from "@/components/CompareResultsPanel";
+import CompareResultsSkeleton from "@/components/CompareResultsSkeleton";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import ErrorFallback from "@/components/ErrorFallback";
+import ResultsPanel from "@/components/ResultsPanel";
+import ReviewResultsSkeleton from "@/components/ReviewResultsSkeleton";
+import type { CompareApiError, CompareResult } from "@/types/compare";
+import type { SupportedLanguage } from "@/types/language";
+import type { ReviewApiError, ReviewResult } from "@/types/review";
+
+type AppMode = "review" | "compare";
+
+interface SubmittedCode {
+  code: string;
+  language: SupportedLanguage;
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [mode, setMode] = useState<AppMode>("review");
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [review, setReview] = useState<ReviewResult | null>(null);
+  const [compareResult, setCompareResult] = useState<CompareResult | null>(null);
+  const [submittedCode, setSubmittedCode] = useState<SubmittedCode | null>(null);
+  const [resultsKey, setResultsKey] = useState(0);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+  const resetResults = () => {
+    setError(null);
+    setReview(null);
+    setCompareResult(null);
+    setSubmittedCode(null);
+    setResultsKey((key) => key + 1);
+  };
+
+  const handleModeChange = (nextMode: AppMode) => {
+    setMode(nextMode);
+    resetResults();
+    setIsLoading(false);
+  };
+
+  const handleReviewSubmit = async (payload: CodeInputSubmitPayload) => {
+    setIsLoading(true);
+    resetResults();
+
+    try {
+      const response = await fetch("/api/review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: payload.code,
+          language: payload.language,
+        }),
+      });
+
+      const data: ReviewResult | ReviewApiError = await response.json();
+
+      if (!response.ok) {
+        const apiError = data as ReviewApiError;
+        throw new Error(apiError.error || "Review request failed.");
+      }
+
+      setReview(data as ReviewResult);
+      setSubmittedCode({ code: payload.code, language: payload.language });
+    } catch (submitError) {
+      const message =
+        submitError instanceof Error ? submitError.message : "An unexpected error occurred.";
+      setError(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCompareSubmit = async (payload: CompareInputSubmitPayload) => {
+    setIsLoading(true);
+    resetResults();
+
+    try {
+      const response = await fetch("/api/compare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          solutionA: payload.solutionA,
+          solutionB: payload.solutionB,
+          language: payload.language,
+        }),
+      });
+
+      const data: CompareResult | CompareApiError = await response.json();
+
+      if (!response.ok) {
+        const apiError = data as CompareApiError;
+        throw new Error(apiError.error || "Compare request failed.");
+      }
+
+      setCompareResult(data as CompareResult);
+    } catch (submitError) {
+      const message =
+        submitError instanceof Error ? submitError.message : "An unexpected error occurred.";
+      setError(message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const hasResults = mode === "review" ? review !== null : compareResult !== null;
+  const emptyMessage =
+    mode === "review"
+      ? "Results will appear here after you submit code."
+      : "Comparison results will appear here after you submit both solutions.";
+
+  return (
+    <div className="flex min-h-screen flex-col">
+      <AppHeader />
+
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-10 lg:py-12">
+        <section className="mb-6 sm:mb-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <h2 className="text-xl font-semibold tracking-tight text-zinc-50 sm:text-2xl lg:text-3xl">
+                {mode === "review" ? "Review your code" : "Compare two solutions"}
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-zinc-400 sm:text-base">
+                {mode === "review"
+                  ? "Paste a snippet below, choose the language, and get structured feedback on bugs, security, performance, and readability."
+                  : "Paste two solutions to the same problem and get an AI ranking with strengths, weaknesses, and reasoning."}
+              </p>
+            </div>
+
+            <div
+              className="flex w-full rounded-lg border border-zinc-800 bg-zinc-900 p-1 sm:w-auto"
+              role="tablist"
+              aria-label="Mode selection"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === "review"}
+                onClick={() => handleModeChange("review")}
+                className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition sm:flex-none ${
+                  mode === "review"
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                Review
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mode === "compare"}
+                onClick={() => handleModeChange("compare")}
+                className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition sm:flex-none ${
+                  mode === "compare"
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                Compare
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
+          {mode === "review" ? (
+            <CodeInput onSubmit={handleReviewSubmit} isLoading={isLoading} />
+          ) : (
+            <CompareInput onSubmit={handleCompareSubmit} isLoading={isLoading} />
+          )}
+        </section>
+
+        <section aria-label="Results" className="mt-6 sm:mt-8">
+          {isLoading && (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
+              {mode === "review" ? <ReviewResultsSkeleton /> : <CompareResultsSkeleton />}
+            </div>
+          )}
+
+          {error && !isLoading && (
+            <ErrorFallback
+              title={mode === "review" ? "Review failed" : "Comparison failed"}
+              message={error}
+              onRetry={resetResults}
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
-        </div>
+          )}
+
+          {mode === "review" && review && submittedCode && !isLoading && (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
+              <ErrorBoundary key={resultsKey} onReset={resetResults}>
+                <ResultsPanel review={review} code={submittedCode.code} />
+              </ErrorBoundary>
+            </div>
+          )}
+
+          {mode === "compare" && compareResult && !isLoading && (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
+              <ErrorBoundary key={resultsKey} onReset={resetResults}>
+                <CompareResultsPanel result={compareResult} />
+              </ErrorBoundary>
+            </div>
+          )}
+
+          {!isLoading && !error && !hasResults && (
+            <div className="rounded-xl border border-dashed border-zinc-800 px-4 py-10 text-center sm:py-12">
+              <p className="text-sm text-zinc-500">{emptyMessage}</p>
+            </div>
+          )}
+        </section>
       </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+      <AppFooter />
     </div>
   );
 }
