@@ -2,12 +2,16 @@
 
 import { useState } from "react";
 import { MAX_CODE_LENGTH } from "@/lib/constants";
+import { usePersistentDraft } from "@/hooks/usePersistentDraft";
+import { EMPTY_COMPARE_DRAFT, isCompareDraft } from "@/lib/drafts";
+import { COMPARE_EXAMPLES } from "@/lib/examples";
 import {
   LANGUAGE_LABELS,
   SUPPORTED_LANGUAGES,
   type SupportedLanguage,
 } from "@/types/language";
 import CodeEditorField from "./CodeEditorField";
+import CodeFileImport from "./CodeFileImport";
 
 export interface CompareInputSubmitPayload {
   solutionA: string;
@@ -21,9 +25,14 @@ interface CompareInputProps {
 }
 
 export default function CompareInput({ onSubmit, isLoading = false }: CompareInputProps) {
-  const [solutionA, setSolutionA] = useState("");
-  const [solutionB, setSolutionB] = useState("");
-  const [language, setLanguage] = useState<SupportedLanguage>("python");
+  const { draft, setDraft, ready, storageAvailable } = usePersistentDraft(
+    "codelens:compare-draft:v1", EMPTY_COMPARE_DRAFT, isCompareDraft,
+  );
+  const { solutionA, solutionB, language } = draft;
+  const setSolutionA = (value: string) => setDraft((previous) => ({ ...previous, solutionA: value }));
+  const setSolutionB = (value: string) => setDraft((previous) => ({ ...previous, solutionB: value }));
+  const setLanguage = (value: SupportedLanguage) => setDraft((previous) => ({ ...previous, language: value }));
+  const inputsDisabled = isLoading || !ready;
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const validateLength = (value: string, label: string): boolean => {
@@ -65,14 +74,20 @@ export default function CompareInput({ onSubmit, isLoading = false }: CompareInp
     }
 
     setValidationError(null);
-    onSubmit({ solutionA: trimmedA, solutionB: trimmedB, language });
+    onSubmit({ solutionA, solutionB, language });
   };
 
   const totalChars = solutionA.length + solutionB.length;
   const isNearLimit = totalChars > MAX_CODE_LENGTH * 1.8;
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4" onKeyDownCapture={(event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !inputsDisabled) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.currentTarget.requestSubmit();
+      }
+    }}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <label htmlFor="compare-language" className="text-sm font-medium text-zinc-300">
           Language
@@ -81,7 +96,7 @@ export default function CompareInput({ onSubmit, isLoading = false }: CompareInp
           id="compare-language"
           value={language}
           onChange={(event) => setLanguage(event.target.value as SupportedLanguage)}
-          disabled={isLoading}
+          disabled={inputsDisabled}
           className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-50 sm:w-48"
         >
           {SUPPORTED_LANGUAGES.map((lang) => (
@@ -92,6 +107,38 @@ export default function CompareInput({ onSubmit, isLoading = false }: CompareInp
         </select>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className="tool-button" disabled={inputsDisabled}
+          onClick={() => {
+            const [exampleA, exampleB] = COMPARE_EXAMPLES[language];
+            setDraft({ solutionA: exampleA, solutionB: exampleB, language });
+            setValidationError(null);
+          }}>Load examples</button>
+        <button type="button" className="tool-button" disabled={inputsDisabled || (!solutionA && !solutionB)}
+          onClick={() => setDraft((previous) => ({
+            ...previous, solutionA: previous.solutionB, solutionB: previous.solutionA,
+          }))}>Swap solutions</button>
+        <button type="button" className="tool-button" disabled={inputsDisabled || (!solutionA && !solutionB)}
+          onClick={() => {
+            setDraft({ solutionA: "", solutionB: "", language });
+            setValidationError(null);
+          }}>Clear solutions</button>
+        <span className="text-xs text-zinc-500">Examples replace both snippets.</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <CodeFileImport label="Import Solution A" disabled={inputsDisabled} onImport={(code, detected) => {
+          setValidationError(null);
+          setDraft((previous) => ({
+            ...previous, solutionA: code, language: previous.solutionB ? previous.language : detected ?? previous.language,
+          }));
+        }} />
+        <CodeFileImport label="Import Solution B" disabled={inputsDisabled} onImport={(code, detected) => {
+          setValidationError(null);
+          setDraft((previous) => ({
+            ...previous, solutionB: code, language: previous.solutionA ? previous.language : detected ?? previous.language,
+          }));
+        }} />
+      </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <CodeEditorField
           id="solution-a"
@@ -99,7 +146,7 @@ export default function CompareInput({ onSubmit, isLoading = false }: CompareInp
           value={solutionA}
           language={language}
           onChange={handleSolutionAChange}
-          disabled={isLoading}
+          disabled={inputsDisabled}
           placeholder="Paste solution A..."
         />
         <CodeEditorField
@@ -108,7 +155,7 @@ export default function CompareInput({ onSubmit, isLoading = false }: CompareInp
           value={solutionB}
           language={language}
           onChange={handleSolutionBChange}
-          disabled={isLoading}
+          disabled={inputsDisabled}
           placeholder="Paste solution B..."
         />
       </div>
@@ -127,16 +174,20 @@ export default function CompareInput({ onSubmit, isLoading = false }: CompareInp
             {solutionA.length.toLocaleString()} + {solutionB.length.toLocaleString()} chars
             (max {MAX_CODE_LENGTH.toLocaleString()} each)
           </p>
+          <p className="text-xs text-zinc-500">
+            {storageAvailable ? "Drafts saved on this device." : "Draft storage unavailable; keep a copy before closing."}
+          </p>
         </div>
 
         <button
           type="submit"
-          disabled={isLoading}
+          disabled={inputsDisabled || !solutionA.trim() || !solutionB.trim()}
           className="inline-flex items-center justify-center rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 focus:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isLoading ? "Comparing..." : "Compare Solutions"}
         </button>
       </div>
+      <p className="text-xs text-zinc-500">Ctrl/Cmd+Enter to compare. Submitted code is sent to OpenAI; avoid secrets and private credentials.</p>
     </form>
   );
 }

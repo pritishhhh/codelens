@@ -27,12 +27,11 @@ function validateScore(value: unknown, field: string): number {
     throw new ReviewValidationError(`${field} must be a finite number.`);
   }
 
-  const score = Math.round(value);
-  if (score < 0 || score > 100) {
+  if (value < 0 || value > 100) {
     throw new ReviewValidationError(`${field} must be between 0 and 100.`);
   }
 
-  return score;
+  return Math.round(value);
 }
 
 function validateSolutionAnalysis(value: unknown, label: string): CompareSolutionAnalysis {

@@ -14,7 +14,7 @@ function getOpenAIClient(): OpenAI {
     throw new Error("OPENAI_API_KEY is not configured.");
   }
 
-  return new OpenAI({ apiKey });
+  return new OpenAI({ apiKey, timeout: 60_000, maxRetries: 0 });
 }
 
 function validateSolutionCode(value: unknown, field: string): string {
@@ -27,13 +27,13 @@ function validateSolutionCode(value: unknown, field: string): string {
     throw new ReviewValidationError(`${field} must not be empty.`);
   }
 
-  if (trimmed.length > MAX_CODE_LENGTH) {
+  if (value.length > MAX_CODE_LENGTH) {
     throw new ReviewValidationError(
       `${field} exceeds the maximum length of ${MAX_CODE_LENGTH} characters.`,
     );
   }
 
-  return trimmed;
+  return value;
 }
 
 function validateRequestBody(body: unknown): {
@@ -71,7 +71,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const languageLabel = LANGUAGE_LABELS[language];
 
     const completion = await client.chat.completions.create({
-      model: OPENAI_MODEL,
+      model: process.env.OPENAI_MODEL || OPENAI_MODEL,
       max_tokens: 4096,
       response_format: { type: "json_object" },
       messages: [
@@ -81,7 +81,7 @@ export async function POST(request: Request): Promise<NextResponse> {
           content: buildCompareUserPrompt(languageLabel, solutionA, solutionB),
         },
       ],
-    });
+    }, { signal: request.signal });
 
     const content = completion.choices[0]?.message?.content;
     if (!content) {
@@ -101,9 +101,15 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const result = validateCompareResult(parsed);
-    return NextResponse.json(result);
+    try {
+      return NextResponse.json(validateCompareResult(parsed));
+    } catch {
+      return NextResponse.json({ error: "The AI returned an invalid comparison. Please try again." }, { status: 502 });
+    }
   } catch (error) {
+    if (request.signal.aborted) {
+      return NextResponse.json({ error: "Request cancelled." }, { status: 499 });
+    }
     if (error instanceof ReviewValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
@@ -118,11 +124,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
+    if (error instanceof OpenAI.APIConnectionTimeoutError) {
+      return NextResponse.json({ error: "The AI service timed out. Please try again." }, { status: 504 });
+    }
     if (error instanceof OpenAI.APIError) {
-      const status = error.status ?? 502;
+      const status = error.status === 429 ? 429 : 502;
       return NextResponse.json(
-        { error: error.message || "OpenAI API request failed." },
-        { status: status >= 400 && status < 600 ? status : 502 },
+        { error: status === 429 ? "The AI service is busy or its quota is exhausted. Please try again later." : "The AI service is unavailable. Please try again later." },
+        { status },
       );
     }
 

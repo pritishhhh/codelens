@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppFooter from "@/components/AppFooter";
 import AppHeader from "@/components/AppHeader";
 import CodeInput, { type CodeInputSubmitPayload } from "@/components/CodeInput";
@@ -11,9 +11,12 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import ErrorFallback from "@/components/ErrorFallback";
 import ResultsPanel from "@/components/ResultsPanel";
 import ReviewResultsSkeleton from "@/components/ReviewResultsSkeleton";
-import type { CompareApiError, CompareResult } from "@/types/compare";
+import ReportExport from "@/components/ReportExport";
+import { validateReviewResult } from "@/lib/validateReview";
+import { validateCompareResult } from "@/lib/validateCompare";
+import type { CompareResult } from "@/types/compare";
 import type { SupportedLanguage } from "@/types/language";
-import type { ReviewApiError, ReviewResult } from "@/types/review";
+import type { ReviewResult } from "@/types/review";
 
 type AppMode = "review" | "compare";
 
@@ -30,83 +33,96 @@ export default function Home() {
   const [compareResult, setCompareResult] = useState<CompareResult | null>(null);
   const [submittedCode, setSubmittedCode] = useState<SubmittedCode | null>(null);
   const [resultsKey, setResultsKey] = useState(0);
+  const [submittedComparison, setSubmittedComparison] = useState<CompareInputSubmitPayload | null>(null);
+  const requestRef = useRef<AbortController | null>(null);
+  const lastSubmission = useRef<CodeInputSubmitPayload | CompareInputSubmitPayload | null>(null);
+
+  useEffect(() => () => requestRef.current?.abort(), []);
+
+  const cancelRequest = () => {
+    requestRef.current?.abort();
+    requestRef.current = null;
+    setIsLoading(false);
+  };
 
   const resetResults = () => {
     setError(null);
     setReview(null);
     setCompareResult(null);
     setSubmittedCode(null);
+    setSubmittedComparison(null);
     setResultsKey((key) => key + 1);
   };
 
   const handleModeChange = (nextMode: AppMode) => {
+    if (nextMode === mode) return;
+    cancelRequest();
+    lastSubmission.current = null;
     setMode(nextMode);
     resetResults();
     setIsLoading(false);
   };
 
-  const handleReviewSubmit = async (payload: CodeInputSubmitPayload) => {
+  const submitAnalysis = async (payload: CodeInputSubmitPayload | CompareInputSubmitPayload) => {
+    cancelRequest();
+    const controller = new AbortController();
+    requestRef.current = controller;
+    lastSubmission.current = payload;
     setIsLoading(true);
     resetResults();
-
+    let timedOut = false;
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 120_000);
     try {
-      const response = await fetch("/api/review", {
+      const isReview = "code" in payload;
+      const response = await fetch(isReview ? "/api/review" : "/api/compare", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          code: payload.code,
-          language: payload.language,
-        }),
+        body: JSON.stringify(payload),
+        signal: controller.signal,
       });
-
-      const data: ReviewResult | ReviewApiError = await response.json();
+      let data: unknown;
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error("The server returned an unreadable response. Please try again.");
+      }
+      if (requestRef.current !== controller) return;
 
       if (!response.ok) {
-        const apiError = data as ReviewApiError;
-        throw new Error(apiError.error || "Review request failed.");
+        const apiError = data as { error?: unknown } | null;
+        throw new Error(typeof apiError?.error === "string" ? apiError.error : "Analysis request failed.");
       }
-
-      setReview(data as ReviewResult);
-      setSubmittedCode({ code: payload.code, language: payload.language });
+      try {
+        if (isReview) {
+          setReview(validateReviewResult(data, payload.code.split("\n").length));
+          setSubmittedCode({ code: payload.code, language: payload.language });
+        } else {
+          setCompareResult(validateCompareResult(data));
+          setSubmittedComparison(payload);
+        }
+      } catch {
+        throw new Error("The server returned an invalid analysis. Please try again.");
+      }
     } catch (submitError) {
+      if (requestRef.current !== controller) return;
+      if (controller.signal.aborted && !timedOut) return;
       const message =
         submitError instanceof Error ? submitError.message : "An unexpected error occurred.";
-      setError(message);
+      setError(timedOut ? "Analysis timed out. Please try again with a shorter snippet." : message);
     } finally {
-      setIsLoading(false);
+      window.clearTimeout(timeout);
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        setIsLoading(false);
+      }
     }
   };
 
-  const handleCompareSubmit = async (payload: CompareInputSubmitPayload) => {
-    setIsLoading(true);
-    resetResults();
-
-    try {
-      const response = await fetch("/api/compare", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          solutionA: payload.solutionA,
-          solutionB: payload.solutionB,
-          language: payload.language,
-        }),
-      });
-
-      const data: CompareResult | CompareApiError = await response.json();
-
-      if (!response.ok) {
-        const apiError = data as CompareApiError;
-        throw new Error(apiError.error || "Compare request failed.");
-      }
-
-      setCompareResult(data as CompareResult);
-    } catch (submitError) {
-      const message =
-        submitError instanceof Error ? submitError.message : "An unexpected error occurred.";
-      setError(message);
-    } finally {
-      setIsLoading(false);
-    }
+  const retryAnalysis = () => {
+    if (lastSubmission.current) void submitAnalysis(lastSubmission.current);
   };
 
   const hasResults = mode === "review" ? review !== null : compareResult !== null;
@@ -137,10 +153,21 @@ export default function Home() {
               className="flex w-full rounded-lg border border-zinc-800 bg-zinc-900 p-1 sm:w-auto"
               role="tablist"
               aria-label="Mode selection"
+              onKeyDown={(event) => {
+                if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+                  event.preventDefault();
+                  const nextMode = event.key === "Home" ? "review" : event.key === "End" ? "compare" : mode === "review" ? "compare" : "review";
+                  handleModeChange(nextMode);
+                  document.getElementById(`${nextMode}-tab`)?.focus();
+                }
+              }}
             >
               <button
                 type="button"
                 role="tab"
+                id="review-tab"
+                aria-controls="review-input"
+                tabIndex={mode === "review" ? 0 : -1}
                 aria-selected={mode === "review"}
                 onClick={() => handleModeChange("review")}
                 className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition sm:flex-none ${
@@ -154,6 +181,9 @@ export default function Home() {
               <button
                 type="button"
                 role="tab"
+                id="compare-tab"
+                aria-controls="compare-input"
+                tabIndex={mode === "compare" ? 0 : -1}
                 aria-selected={mode === "compare"}
                 onClick={() => handleModeChange("compare")}
                 className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition sm:flex-none ${
@@ -168,17 +198,22 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
-          {mode === "review" ? (
-            <CodeInput onSubmit={handleReviewSubmit} isLoading={isLoading} />
-          ) : (
-            <CompareInput onSubmit={handleCompareSubmit} isLoading={isLoading} />
-          )}
+        <section id="review-input" role="tabpanel" aria-labelledby="review-tab" hidden={mode !== "review"}
+          className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
+          <CodeInput onSubmit={submitAnalysis} isLoading={isLoading} />
+        </section>
+        <section id="compare-input" role="tabpanel" aria-labelledby="compare-tab" hidden={mode !== "compare"}
+          className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
+          <CompareInput onSubmit={submitAnalysis} isLoading={isLoading} />
         </section>
 
         <section aria-label="Results" className="mt-6 sm:mt-8">
           {isLoading && (
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
+              <div role="status" className="mb-4 flex items-center justify-between gap-3">
+                <p className="text-sm text-zinc-400">Analysis in progress…</p>
+                <button type="button" onClick={cancelRequest} className="tool-button">Cancel analysis</button>
+              </div>
               {mode === "review" ? <ReviewResultsSkeleton /> : <CompareResultsSkeleton />}
             </div>
           )}
@@ -187,20 +222,22 @@ export default function Home() {
             <ErrorFallback
               title={mode === "review" ? "Review failed" : "Comparison failed"}
               message={error}
-              onRetry={resetResults}
+              onRetry={retryAnalysis}
             />
           )}
 
           {mode === "review" && review && submittedCode && !isLoading && (
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
+              <ReportExport report={{ kind: "review", result: review, ...submittedCode }} />
               <ErrorBoundary key={resultsKey} onReset={resetResults}>
                 <ResultsPanel review={review} code={submittedCode.code} />
               </ErrorBoundary>
             </div>
           )}
 
-          {mode === "compare" && compareResult && !isLoading && (
+          {mode === "compare" && compareResult && submittedComparison && !isLoading && (
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
+              <ReportExport report={{ kind: "compare", result: compareResult, ...submittedComparison }} />
               <ErrorBoundary key={resultsKey} onReset={resetResults}>
                 <CompareResultsPanel result={compareResult} />
               </ErrorBoundary>

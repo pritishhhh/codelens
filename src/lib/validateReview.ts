@@ -44,7 +44,7 @@ export class ReviewValidationError extends Error {
   }
 }
 
-export function validateReviewResult(value: unknown): ReviewResult {
+export function validateReviewResult(value: unknown, lineCount?: number): ReviewResult {
   if (!isRecord(value)) {
     throw new ReviewValidationError("Review response must be a JSON object.");
   }
@@ -59,6 +59,9 @@ export function validateReviewResult(value: unknown): ReviewResult {
     if (!isReviewIssue(issue)) {
       throw new ReviewValidationError(`Invalid issue at index ${index}.`);
     }
+    if (lineCount !== undefined && issue.line > lineCount) {
+      throw new ReviewValidationError(`Issue at index ${index} references a line outside the snippet.`);
+    }
     issues.push(issue);
   }
 
@@ -66,10 +69,10 @@ export function validateReviewResult(value: unknown): ReviewResult {
     throw new ReviewValidationError("overallScore must be a finite number.");
   }
 
-  const overallScore = Math.round(value.overallScore);
-  if (overallScore < 0 || overallScore > 100) {
+  if (value.overallScore < 0 || value.overallScore > 100) {
     throw new ReviewValidationError("overallScore must be between 0 and 100.");
   }
+  const overallScore = Math.round(value.overallScore);
 
   if (typeof value.summary !== "string" || value.summary.trim().length === 0) {
     throw new ReviewValidationError("summary must be a non-empty string.");
