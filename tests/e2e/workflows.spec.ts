@@ -67,6 +67,7 @@ test("review preserves blank lines, filters issues, toggles fixes, and exports r
   await editor.press("ControlOrMeta+Enter");
   await expect(page.getByText(review.summary)).toBeVisible();
   expect(submittedCode).toBe(code);
+  await expect(page.getByText("major", { exact: true })).toHaveCSS("color", "rgb(251, 146, 60)");
   await page.getByRole("button", { name: "bug", exact: true }).click();
   await expect(page.getByText("Showing 1 of 2 issues")).toBeVisible();
   await expect(page.getByText("Choose a clear name.", { exact: true })).not.toBeVisible();
