@@ -1,43 +1,85 @@
 # CodeLens
 
 [![CI](https://github.com/pritishhhh/codelens/actions/workflows/ci.yml/badge.svg)](https://github.com/pritishhhh/codelens/actions/workflows/ci.yml)
+[![Deploy to Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fpritishhhh%2Fcodelens)
 
-A React and TypeScript workspace for AI-assisted code review and solution comparison. Paste or import a snippet, inspect actionable feedback, and export the analysis with its original source.
+**A browser workspace for editing code, understanding tradeoffs, and getting structured review feedback.**
 
-![CodeLens editor and review results](docs/preview.png)
+CodeLens brings a real code editor, local source comparison, and AI-assisted review into one interface. It supports JavaScript, TypeScript, Python, Java, C++, and Go. Curated sample reports make the complete review and comparison experience available without an API key.
 
-*Interface preview with illustrative review feedback.*
+![CodeLens workspace](docs/preview.png)
 
-## Features
+[View the comparison workspace](docs/comparison.png)
 
-- **Code editor:** CodeMirror 6 with syntax highlighting, line numbers, bracket matching, folding, search, indentation, and undo/redo.
-- **Six languages:** JavaScript/JSX, TypeScript/TSX, Python, Java, C++, and Go.
-- **Structured reviews:** Quality score, severity groups, category filters, issue search, and suggested fixes alongside annotated source.
-- **Solution comparison:** Side-by-side editors, scores, strengths, weaknesses, a winner, and an explanation.
-- **Persistent drafts:** Separate review and comparison drafts survive reloads and mode changes in this browser.
-- **File import:** Read source files locally, infer the language, normalize line endings, and validate size before replacing code.
-- **Examples:** Review snippets and comparison pairs for every supported language, plus a swap action.
-- **Exports:** Download complete Markdown or JSON reports, including submitted source and unfiltered feedback.
-- **Request controls:** Cancel analysis, retry failures, and ignore stale responses after switching modes.
-- **Accessible navigation:** Named editors, keyboard mode tabs, visible focus states, responsive layouts, and reduced-motion support.
+## What it does
+
+- **Edit comfortably:** CodeMirror 6 provides syntax highlighting, line numbers, bracket matching, completion, folding, search and replace, indentation, and undo/redo. Line wrapping and adjustable font sizes accommodate different screens.
+- **Format locally:** JavaScript/JSX and TypeScript/TSX formatting uses lazily loaded Prettier parsers. Formatting is undoable; invalid syntax leaves the original source intact.
+- **Work with files:** Import source files with language detection and normalized line endings, copy code, or download the current source in its selected language.
+- **Review code:** Get a quality score, line-specific issues grouped by severity, category filters, search, and suggested fixes beside the submitted source.
+- **Compare solutions:** Edit two snippets, swap them, inspect a local line diff, and request an analysis of correctness, performance, readability, and maintainability.
+- **Try sample reports:** Explore curated TypeScript reviews and comparisons without contacting an AI provider. Samples are clearly identified in the interface and exported reports.
+- **Keep control of drafts:** Documents stay in memory by default. Optional local saving restores drafts after reload; switching it off removes the stored source for that draft.
+- **Export findings:** Download Markdown or JSON containing the original submitted source and complete feedback, independent of active filters.
+- **Manage requests:** Cancel work, retry a failed submission, and switch modes without stale responses changing the current view.
+- **Navigate accessibly:** Named editors, keyboard-operated mode tabs, focus indicators, a skip link, responsive layouts, and reduced-motion support.
+
+CodeLens reviews snippets; it does not compile or execute them. The annotated review displays suggestions, which may be explanations rather than directly applicable patches. The comparison source diff shows actual text changes between the two documents.
+
+## Technology
+
+Next.js 15 App Router · React · TypeScript · Tailwind CSS · CodeMirror 6 · Prettier · jsdiff · OpenAI Node SDK · Playwright · Node test runner
+
+The API key remains on the server. Formatting, text comparison, imports, downloads, draft storage, and sample reports run locally in the browser.
 
 ## Run locally
 
-Use **Node.js 22.13 or newer** and npm.
+Requirements: **Node.js 22.13+ (22.x LTS) or 24+**, and npm. The repository includes an `.nvmrc` for Node 22.
 
 ```bash
 git clone https://github.com/pritishhhh/codelens.git
 cd codelens
 npm ci
-cp .env.example .env.local
 npm run dev
 ```
 
-On Windows, use `Copy-Item .env.example .env.local` instead of `cp`.
+Open [localhost:3000](http://localhost:3000). The editor and sample reports work immediately without environment variables.
 
-Set `OPENAI_API_KEY` in `.env.local`. The key stays on the server; never prefix it with `NEXT_PUBLIC_` or commit it. `OPENAI_MODEL` optionally overrides the default `gpt-4o`; choose a model compatible with Chat Completions and JSON object output.
+Live AI analysis requires a server-side API key:
 
-Open [localhost:3000](http://localhost:3000). Editing, examples, draft saving, and file import work without an API key; real analysis requires a configured key and provider quota.
+```bash
+cp .env.example .env.local
+```
+
+On PowerShell, the equivalent is `Copy-Item .env.example .env.local`.
+
+| Variable | Purpose |
+| --- | --- |
+| `OPENAI_API_KEY` | Server-only provider key for live analysis. Never use a `NEXT_PUBLIC_` prefix. |
+| `OPENAI_MODEL` | Optional model override; defaults to `gpt-4o`. Must support Chat Completions and JSON object output. |
+| `CODELENS_ACCESS_TOKEN` | Private deployment access code. Required for live AI in production; optional during local development. |
+
+Restart the development server after changing environment variables. When an access token is configured, enter it in **Live AI access** in the workspace. The code is held in memory for the current visit and sent only with analysis requests.
+
+## Deploy on Vercel
+
+The repository includes `vercel.json`, uses the Next.js framework preset, and builds without an API key or external database.
+
+1. Import this GitHub repository into Vercel, or use the deploy button above.
+2. Select **Node.js 22.x** and keep the repository root as the project directory.
+3. For live analysis, configure `OPENAI_API_KEY` and a long, random `CODELENS_ACCESS_TOKEN` as server environment variables. `OPENAI_MODEL` is optional.
+4. Deploy. Subsequent pushes to the connected branch trigger Vercel builds.
+
+Without a production access token, live analysis returns 503 and the editor and sample reports remain usable. This prevents an accidental public deployment from exposing an unrestricted paid AI endpoint. The access code can be shared privately with intended reviewers; it is separate from the provider API key.
+
+Both API routes use the Node.js runtime with a 60-second maximum duration. Provider requests have a 45-second timeout with automatic retries disabled. Responses containing analysis are marked `no-store`. A static-only export cannot run the API routes.
+
+For another Node-compatible host:
+
+```bash
+npm run build
+npm start
+```
 
 ## Keyboard shortcuts
 
@@ -45,35 +87,31 @@ Open [localhost:3000](http://localhost:3000). Editing, examples, draft saving, a
 | --- | --- |
 | Review or compare | Ctrl/Cmd + Enter |
 | Undo / redo | Ctrl/Cmd + Z / Shift + Ctrl/Cmd + Z |
-| Find in editor | Ctrl/Cmd + F |
+| Find / replace | Ctrl/Cmd + F, then expand the replace controls |
 | Indent / outdent | Tab / Shift + Tab |
-| Leave editor | Escape, then Tab |
-| Change mode while a tab is focused | Left / Right arrow, Home / End |
+| Leave the editor | Escape, then Tab |
+| Change mode with a tab focused | Left / Right arrow, Home / End |
 
-Snippets are limited to **10,000 characters each**. Imported files are read in the browser and are sent to the server only when submitted. Examples replace the current snippet or pair.
+Snippets are limited to **10,000 characters each**. Example and sample buttons replace the current snippet or comparison pair.
 
-## Architecture
+## Architecture and engineering choices
 
 ```text
-src/app/page.tsx          Mode selection, request lifecycle, and submitted-result snapshots
-src/app/api/             Server-only review and comparison routes
-src/components/          Editors, forms, feedback, annotations, and report downloads
-src/hooks/               SSR-safe persistent draft hook
-src/lib/                 Prompts, runtime validation, examples, drafts, and report formatting
-src/types/               Shared TypeScript request and result contracts
-tests/unit/              Validators, reports, and API behavior with a mocked provider
+src/app/                 Workspace, layout, and server-only API routes
+src/components/          Editors, source diff, forms, feedback, and exports
+src/hooks/               Validated, opt-in draft persistence
+src/lib/                 Prompts, request guards, validators, formatting, diffing, and samples
+src/types/               Shared TypeScript request/result contracts
+tests/unit/              API boundaries, runtime contracts, reports, diffing, and formatting
 tests/e2e/               Desktop and mobile browser workflows
 ```
 
-**React state management:** Controlled editor documents and a reusable persistence hook keep each draft independent. Storage hydrates after mount to avoid server/client markup mismatches and never overwrites a saved draft with initial empty state.
-
-**Async correctness:** An `AbortController` and request identity guard prevent cancelled or superseded requests from changing the active view. Retry uses the last submitted snapshot. The provider has a 60-second timeout; the browser has a 120-second fallback.
-
-**Runtime contracts:** TypeScript describes the data, while runtime validators check actual AI responses. Invalid input returns 400; malformed AI output returns 502. Review issues must reference a line that exists in the unchanged source.
-
-**Editor correctness:** CodeMirror owns text, highlighting, selection, and cursor measurement in one document. The former transparent textarea overlay used inconsistent padding and font metrics. Font loading now triggers remeasurement instead of relying on a cursor offset.
-
-**Exports:** Markdown and JSON are generated locally. Code fences grow when the source contains backticks, preserving the snippet inside the exported report.
+- **Request lifecycle:** Abort controllers and request identity checks prevent cancelled or superseded work from updating the screen. Retry uses the submitted snapshot, preserving its source and line numbers.
+- **Runtime validation:** Request and model output are validated separately. Invalid input returns 400, oversized request bodies return 413, and malformed provider output returns 502. Review issues must reference a line in the submitted source.
+- **Deployment protection:** Production live analysis requires a shared access token. Comparisons use constant-time digest checks. Cross-origin browser analysis requests are rejected, actual body streams are bounded to 128 KiB, and provider error details are never returned.
+- **Editor integrity:** CodeMirror owns document text, highlighting, selection, and cursor measurement. Formatting is a history transaction and skips results if the document changed while parsers were loading.
+- **Local persistence:** Saved drafts are validated after hydration and writes are debounced. Existing saved drafts are migrated; new visitors explicitly opt in. Storage restrictions leave the editor usable.
+- **Honest samples:** Curated sample data never impersonates a live response. Sample provenance appears in Markdown and JSON exports.
 
 ## Quality checks
 
@@ -86,23 +124,23 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-GitHub Actions runs these checks on pushes and pull requests to `main`, including browser tests against the production build. Tests use mocked responses and do not require an API key or spend provider credits. Browser projects cover desktop Chromium and a mobile viewport.
+GitHub Actions runs lint, type checking, unit tests, a production build, and browser tests on pushes and pull requests to `main`. Browser coverage includes desktop Chromium and a mobile viewport. Tests use synthetic data and mocked AI responses; they do not require a provider key or spend credits.
 
-## Deployment
+## Privacy and limitations
 
-Use a Node-compatible Next.js host. Set `OPENAI_API_KEY` and optionally `OPENAI_MODEL` in its server environment, then run `npm run build` and `npm start`. These API routes cannot run in a static-only export.
+Source is sent to OpenAI only when live analysis is submitted. Imports, formatting, samples, and local diffs do not transmit source. Optional saved drafts are plaintext in this browser's storage. Turning saving off removes that draft's stored source, while preserving the current editor contents until the page is closed or reloaded.
 
-## Limitations and tradeoffs
+AI feedback may be incorrect or incomplete; it needs human review. Cancelling a request cannot guarantee cancellation of provider work or charges already incurred. Both comparison snippets use one selected language. Mobile tests use a Chromium viewport rather than a physical device or Safari.
 
-- AI reviews can miss problems or suggest incorrect fixes. CodeLens does not compile or execute submitted snippets.
-- Drafts are plaintext in this browser's local storage; there is no account, cloud synchronization, or saved report history. Clear a draft before leaving a shared device.
-- Both comparison solutions use the selected language.
-- The API currently has no application authentication or distributed rate limiter. Add access controls and provider spending limits before exposing a paid key through an unrestricted public deployment.
-- Cancelling a request stops local waiting and attempts to abort the provider request. It cannot guarantee cancellation of provider work or charges already incurred.
-- Next.js and its PostCSS dependency were patched. Development tooling still has upstream audit findings; see [review notes](docs/REVIEW_NOTES.md).
+A shared access code is suitable for a restricted portfolio demo, not a substitute for individual accounts, distributed rate limits, or per-user quotas. Provider spending controls and deployment access policies remain relevant for a public service.
 
-## Engineering walkthrough
+## Further improvements
 
-This project demonstrates component composition, custom hooks, controlled state, TypeScript unions and type guards, API integration, request cancellation, local persistence, responsive styling, runtime validation, browser testing, and continuous integration.
-
-For an interview demo: load the JavaScript example, review it, filter the issues, export a report, compare the paired examples, then reload to demonstrate saved drafts.
+- **Multi-file workspaces:** A file tree, tabs, cross-file search, and project imports with explicit size and privacy limits.
+- **Language intelligence:** Language Server Protocol integration for diagnostics, completion, symbol navigation, and refactoring; formatters for Python, Java, C++, and Go.
+- **Review context:** Structured problem descriptions, selected review rules, and schema-constrained model responses with evidence linked to source.
+- **Accounts and quotas:** Individual authentication, distributed rate limiting, per-user usage budgets, and an audit trail that avoids storing source by default.
+- **Review history:** Opt-in encrypted cloud storage, saved comparisons, and report history with deletion controls.
+- **Testing depth:** Firefox and WebKit coverage, automated accessibility audits, larger-diff performance checks, and a small provider evaluation set.
+- **Collaboration:** GitHub pull-request imports, anchored discussion threads, and explicit approval before writing comments.
+- **Execution sandbox:** Isolated, resource-limited runners with no host or network access, if code execution becomes part of the product.

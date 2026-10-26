@@ -1,36 +1,41 @@
-# Project review and improvements
+# Engineering notes
 
-The review covered the application page and layout, both API routes, all input and result components, error and loading states, prompts, JSON parsing, runtime validators, shared types, styles, dependencies, and setup documentation.
+## Editor and review integrity
 
-## Fixed
+CodeMirror owns text, highlighting, selection, and cursor measurement in a single document. Font loading triggers remeasurement. Formatting uses a history transaction, preserves source on parse failure, and discards stale formatting results if the document changes while parsers load.
 
-| Finding | Change |
-| --- | --- |
-| Caret and highlighted text used separate layers with inconsistent padding and font metrics | Replaced the overlay with CodeMirror; remeasure after local fonts load |
-| Changing modes unmounted forms and discarded drafts | Keep forms mounted and persist independently validated drafts locally |
-| A late response could update the screen after a mode change | Abort requests and guard every update by active request identity |
-| No cancellation or timeout controls | Add a cancel action, bounded provider/browser timeouts, and real retry |
-| Trimming source shifted review line numbers | Preserve source whitespace end to end; use trimming only to check emptiness |
-| Invalid model output was classified as invalid user input | Return 502 for malformed provider results and 400 for invalid requests |
-| Review issues could reference nonexistent source lines | Validate line references against submitted source |
-| Fractional scores outside 0–100 could pass after rounding | Check the range before rounding |
-| Provider error details were returned directly | Use actionable messages without raw provider details |
-| Outdated Next.js and nested PostCSS dependencies | Upgrade Next.js and override its PostCSS with the patched direct dependency |
-| Shared severity and score classes were outside Tailwind's scanned folders | Scan all source files so severity highlights and score colors are generated |
-| No automated regression checks or project-specific README | Add unit/browser tests, GitHub Actions, setup instructions, and architecture notes |
+Submitted source is preserved, including leading whitespace. The review API validates issue line numbers against that exact source. Results and exports use the submitted snapshot, while category filters affect presentation only. Review suggestions may contain explanations; they are not automatically applied as patches.
 
-## Added
+The local comparison diff shows actual changes between Solution A and Solution B. Its computation has a short time budget and falls back to showing complete removal/addition for pathological input.
 
-Code editor navigation and shortcuts; language-specific examples; source-file import; comparison swapping; category filters and issue search; complete Markdown/JSON exports; local draft persistence; keyboard-accessible mode tabs; a source link.
+## Request and deployment boundaries
 
-## Validation boundaries
+Both API routes share access checks, bounded JSON reading, provider configuration, and error translation:
 
-Unit tests mock the provider's transport and verify server behavior without making paid requests. Browser tests use mocked API responses to verify the interface and downloads. Desktop and mobile viewport tests check cursor geometry against actual rendered character bounds, typing, indentation, undo, horizontal scrolling, draft restore, imports, filtering, retries, and cancellation.
+- Production analysis is disabled unless a private deployment access token is configured.
+- Tokens are compared using constant-time SHA-256 digest comparison.
+- Browser requests from a different origin are rejected.
+- Actual streamed bodies are limited to 128 KiB, even without an accurate Content-Length.
+- The provider has a 45-second timeout and zero automatic retries, within a 60-second Vercel function budget.
+- API responses are marked no-store; provider details, source, and credentials are not logged by the application.
+- Cancelled and superseded requests cannot update the current workspace.
 
-A real provider response must still be smoke-tested in the deployed environment with its configured API key, quota, and model. Mobile tests use Chromium with a mobile viewport, not a physical device or Safari.
+A shared token restricts a portfolio demo. Individual authentication, distributed rate limits, and per-user budgets remain future work. Cancellation cannot guarantee that provider computation or charges have stopped.
 
-## Remaining dependency findings
+## Privacy and samples
 
-The production framework and PostCSS issues were addressed. Some transitive development tools still report vulnerabilities in glob-pattern and selector parsing. Their inputs here are repository-controlled files and build configuration. They remain tracked rather than forcing unverified major upgrades to Tailwind or its internals. Run `npm audit` periodically and recheck after upstream releases.
+New visitors opt in to local draft storage. Disabling saving removes the corresponding stored source while preserving the in-memory document. Existing saved drafts are migrated to avoid losing work. Writes are debounced and stored data is validated after hydration.
 
-Authentication, a distributed rate limiter, cloud history, and code execution are outside this update. The application currently submits snippets to a server-side AI provider; it does not run user code.
+Curated sample reports use synthetic TypeScript snippets, make no provider request, and identify their provenance in the interface and exports. Live analysis still requires configured provider credentials, model access, and quota.
+
+## Verification
+
+Unit checks cover request validation, production access guards, stream-size limits, malformed provider results, source preservation, diff line numbers, formatting, samples, and report generation.
+
+Browser checks cover cursor geometry, keyboard navigation, indentation, undo, horizontal scrolling, responsive layout, import limits, filtering, exports, request retry/cancellation, formatting undo, source download, sample provenance, opt-in storage/deletion, and access-code handling. Tests use synthetic data and mocked provider responses.
+
+The production build is exercised in CI. Browser projects cover desktop Chromium and an emulated mobile viewport; physical devices, Firefox, and WebKit are not covered yet. A live provider response has not been verified as part of these mocked checks.
+
+## Dependency maintenance
+
+Next.js is pinned to the patched 15.5.28 release. PostCSS and its selector parser are overridden to patched versions; the production build and browser styling checks cover the resulting Tailwind output. The dependency audit reported zero findings when this update was verified. Future registry advisories may change that result.
