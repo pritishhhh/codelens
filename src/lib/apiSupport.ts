@@ -8,9 +8,25 @@ export class RequestError extends Error {
   constructor(message: string, public status: number) { super(message); }
 }
 
+function matchesRequestOrigin(request: Request, origin: string): boolean {
+  try {
+    const url = new URL(request.url);
+    // NextRequest normalizes loopback URLs to localhost. Host preserves the
+    // authority the browser actually requested, including IPv6 and the port.
+    const host = request.headers.get("host") ?? url.host;
+    // Only the managed Vercel proxy may supply the external TLS scheme.
+    const forwardedProtocol = process.env.VERCEL === "1" ? request.headers.get("x-forwarded-proto") : null;
+    const protocol = forwardedProtocol ? `${forwardedProtocol}:` : url.protocol;
+    if (!["http:", "https:"].includes(protocol) || /[\s\\/@?#,]/.test(host)) return false;
+    return origin === new URL(`${protocol}//${host}`).origin;
+  } catch {
+    return false;
+  }
+}
+
 export function authorizeAnalysis(request: Request) {
   const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin) {
+  if (origin && !matchesRequestOrigin(request, origin)) {
     throw new RequestError("Cross-origin analysis requests are not allowed.", 403);
   }
   const token = process.env.CODELENS_ACCESS_TOKEN;
