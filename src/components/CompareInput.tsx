@@ -5,6 +5,7 @@ import { MAX_CODE_LENGTH } from "@/lib/constants";
 import { usePersistentDraft } from "@/hooks/usePersistentDraft";
 import { EMPTY_COMPARE_DRAFT, isCompareDraft } from "@/lib/drafts";
 import { COMPARE_EXAMPLES } from "@/lib/examples";
+import { SAMPLE_COMPARISON } from "@/lib/sampleReports";
 import {
   LANGUAGE_LABELS,
   SUPPORTED_LANGUAGES,
@@ -12,6 +13,7 @@ import {
 } from "@/types/language";
 import CodeEditorField from "./CodeEditorField";
 import CodeFileImport from "./CodeFileImport";
+import SourceDiff from "./SourceDiff";
 
 export interface CompareInputSubmitPayload {
   solutionA: string;
@@ -22,10 +24,11 @@ export interface CompareInputSubmitPayload {
 interface CompareInputProps {
   onSubmit: (payload: CompareInputSubmitPayload) => void;
   isLoading?: boolean;
+  onSample: (payload: CompareInputSubmitPayload) => void;
 }
 
-export default function CompareInput({ onSubmit, isLoading = false }: CompareInputProps) {
-  const { draft, setDraft, ready, storageAvailable } = usePersistentDraft(
+export default function CompareInput({ onSubmit, onSample, isLoading = false }: CompareInputProps) {
+  const { draft, setDraft, ready, storageAvailable, persistenceEnabled, setPersistenceEnabled, saving } = usePersistentDraft(
     "codelens:compare-draft:v1", EMPTY_COMPARE_DRAFT, isCompareDraft,
   );
   const { solutionA, solutionB, language } = draft;
@@ -108,6 +111,10 @@ export default function CompareInput({ onSubmit, isLoading = false }: CompareInp
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className="tool-button" disabled={inputsDisabled} onClick={() => {
+          const sample = { solutionA: SAMPLE_COMPARISON[0], solutionB: SAMPLE_COMPARISON[1], language: "typescript" as const };
+          setDraft(sample); setValidationError(null); onSample(sample);
+        }}>View sample comparison</button>
         <button type="button" className="tool-button" disabled={inputsDisabled}
           onClick={() => {
             const [exampleA, exampleB] = COMPARE_EXAMPLES[language];
@@ -160,6 +167,8 @@ export default function CompareInput({ onSubmit, isLoading = false }: CompareInp
         />
       </div>
 
+      {(solutionA || solutionB) && <SourceDiff before={solutionA} after={solutionB} />}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-col gap-1">
           {validationError && (
@@ -174,8 +183,12 @@ export default function CompareInput({ onSubmit, isLoading = false }: CompareInp
             {solutionA.length.toLocaleString()} + {solutionB.length.toLocaleString()} chars
             (max {MAX_CODE_LENGTH.toLocaleString()} each)
           </p>
-          <p className="text-xs text-zinc-500">
-            {storageAvailable ? "Drafts saved on this device." : "Draft storage unavailable; keep a copy before closing."}
+          <label className="flex items-center gap-2 text-xs text-zinc-400">
+            <input type="checkbox" checked={persistenceEnabled} disabled={!ready} onChange={(event) => setPersistenceEnabled(event.target.checked)} className="accent-indigo-500" />
+            Save comparison on this device
+          </label>
+          <p className="text-xs text-zinc-400" role="status">
+            {!storageAvailable ? "Draft storage unavailable; keep a copy before closing." : persistenceEnabled ? saving ? "Saving drafts…" : "Drafts saved on this device." : "Drafts stay in memory. Enable saving to restore them after reload."}
           </p>
         </div>
 

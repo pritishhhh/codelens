@@ -3,11 +3,11 @@ import { LANGUAGE_LABELS } from "@/types/language";
 import type { ReviewResult } from "@/types/review";
 import type { CompareResult } from "@/types/compare";
 
-export type AnalysisReport = {
+export type AnalysisReport = ({
   kind: "review"; language: SupportedLanguage; code: string; result: ReviewResult;
 } | {
   kind: "compare"; language: SupportedLanguage; solutionA: string; solutionB: string; result: CompareResult;
-};
+}) & { source?: "sample" | "ai" };
 
 function codeBlock(code: string, language: string): string {
   // Source snippets may themselves contain Markdown fences.
@@ -20,6 +20,7 @@ export function reportToMarkdown(report: AnalysisReport): string {
   const lines = [
     `# CodeLens ${report.kind === "review" ? "Code Review" : "Solution Comparison"}`,
     "", `Language: ${LANGUAGE_LABELS[report.language]}`, "",
+    ...(report.source === "sample" ? ["Source: curated sample report (no AI request)", ""] : []),
     report.result.summary, "",
   ];
   if (report.kind === "review") {

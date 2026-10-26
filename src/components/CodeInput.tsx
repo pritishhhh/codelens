@@ -5,6 +5,7 @@ import { MAX_CODE_LENGTH } from "@/lib/constants";
 import { usePersistentDraft } from "@/hooks/usePersistentDraft";
 import { EMPTY_REVIEW_DRAFT, isReviewDraft } from "@/lib/drafts";
 import { REVIEW_EXAMPLES } from "@/lib/examples";
+import { SAMPLE_REVIEW_CODE } from "@/lib/sampleReports";
 import {
   LANGUAGE_LABELS,
   SUPPORTED_LANGUAGES,
@@ -21,10 +22,11 @@ export interface CodeInputSubmitPayload {
 interface CodeInputProps {
   onSubmit: (payload: CodeInputSubmitPayload) => void;
   isLoading?: boolean;
+  onSample: (payload: CodeInputSubmitPayload) => void;
 }
 
-export default function CodeInput({ onSubmit, isLoading = false }: CodeInputProps) {
-  const { draft, setDraft, ready, storageAvailable } = usePersistentDraft(
+export default function CodeInput({ onSubmit, onSample, isLoading = false }: CodeInputProps) {
+  const { draft, setDraft, ready, storageAvailable, persistenceEnabled, setPersistenceEnabled, saving } = usePersistentDraft(
     "codelens:review-draft:v1", EMPTY_REVIEW_DRAFT, isReviewDraft,
   );
   const { code, language } = draft;
@@ -92,6 +94,10 @@ export default function CodeInput({ onSubmit, isLoading = false }: CodeInputProp
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        <button type="button" className="tool-button" disabled={inputsDisabled} onClick={() => {
+          const sample = { code: SAMPLE_REVIEW_CODE, language: "typescript" as const };
+          setDraft(sample); setValidationError(null); onSample(sample);
+        }}>View sample review</button>
         <button type="button" className="tool-button" disabled={inputsDisabled}
           onClick={() => { setValidationError(null); setCode(REVIEW_EXAMPLES[language]); }}>
           Load example
@@ -128,8 +134,12 @@ export default function CodeInput({ onSubmit, isLoading = false }: CodeInputProp
           >
             {charCount.toLocaleString()} / {MAX_CODE_LENGTH.toLocaleString()} characters
           </p>
-          <p className="text-xs text-zinc-500">
-            {storageAvailable ? "Draft saved on this device." : "Draft storage unavailable; keep a copy before closing."}
+          <label className="flex items-center gap-2 text-xs text-zinc-400">
+            <input type="checkbox" checked={persistenceEnabled} disabled={!ready} onChange={(event) => setPersistenceEnabled(event.target.checked)} className="accent-indigo-500" />
+            Save draft on this device
+          </label>
+          <p className="text-xs text-zinc-400" role="status">
+            {!storageAvailable ? "Draft storage unavailable; keep a copy before closing." : persistenceEnabled ? saving ? "Saving draft…" : "Draft saved on this device." : "Draft stays in memory. Enable saving to restore it after reload."}
           </p>
         </div>
 

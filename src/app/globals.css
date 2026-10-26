@@ -16,8 +16,18 @@
 body {
   color: var(--foreground);
   background: var(--background);
+  background-image: radial-gradient(ellipse at 50% 0%, #312e8120, transparent 55%);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
+
+:focus-visible {
+  outline: 2px solid #a5b4fc;
+  outline-offset: 3px;
+}
+
+::selection { background: #4338ca; color: #fff; }
+
+input, select { color-scheme: dark; }
 
 @layer utilities {
   .text-balance {

@@ -12,11 +12,17 @@ export function usePersistentDraft<T>(
   const [draft, setDraft] = useState<T>(initialValue);
   const [ready, setReady] = useState(false);
   const [storageAvailable, setStorageAvailable] = useState(true);
+  const [persistenceEnabled, setPersistenceEnabled] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     try {
       const saved = localStorage.getItem(key);
-      if (saved) {
+      const preference = localStorage.getItem(`${key}:enabled`);
+      // Preserve existing drafts during migration; new visitors opt in explicitly.
+      const enabled = preference === "true" || (preference === null && saved !== null);
+      setPersistenceEnabled(enabled);
+      if (enabled && saved) {
         const parsed: unknown = JSON.parse(saved);
         if (isValid(parsed)) setDraft(parsed);
       }
@@ -29,13 +35,32 @@ export function usePersistentDraft<T>(
 
   useEffect(() => {
     if (!ready) return;
-    try {
-      localStorage.setItem(key, JSON.stringify(draft));
-      setStorageAvailable(true);
-    } catch {
-      setStorageAvailable(false);
-    }
-  }, [draft, key, ready]);
+    setSaving(persistenceEnabled);
+    const persist = () => {
+      try {
+        localStorage.setItem(`${key}:enabled`, String(persistenceEnabled));
+        if (persistenceEnabled) localStorage.setItem(key, JSON.stringify(draft));
+        else localStorage.removeItem(key);
+        setStorageAvailable(true);
+      } catch {
+        setStorageAvailable(false);
+      } finally {
+        setSaving(false);
+      }
+    };
+    // Disabling removes stored source immediately; typing is debounced.
+    if (!persistenceEnabled) { persist(); return; }
+    const timer = window.setTimeout(persist, 300);
+    const onVisibilityChange = () => { if (document.visibilityState === "hidden") persist(); };
+    // A reload or background transition must not discard the final debounce window.
+    window.addEventListener("pagehide", persist);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pagehide", persist);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [draft, key, ready, persistenceEnabled]);
 
-  return { draft, setDraft, ready, storageAvailable };
+  return { draft, setDraft, ready, storageAvailable, persistenceEnabled, setPersistenceEnabled, saving };
 }

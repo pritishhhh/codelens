@@ -27,8 +27,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# local env files
-.env*.local
+# Environment files may contain server credentials.
+.env*
+!.env.example
 
 # vercel
 .vercel

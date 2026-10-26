@@ -1,19 +1,12 @@
 "use client";
 
 import { reportToMarkdown, type AnalysisReport } from "@/lib/reports";
+import { downloadText } from "@/lib/download";
 
 export default function ReportExport({ report }: { report: AnalysisReport }) {
   const download = (format: "md" | "json") => {
     const content = format === "md" ? reportToMarkdown(report) : JSON.stringify(report, null, 2);
-    const blob = new Blob([content], { type: format === "md" ? "text/markdown;charset=utf-8" : "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `codelens-${report.kind}.${format}`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    downloadText(content, `codelens-${report.kind}.${format}`, format === "md" ? "text/markdown;charset=utf-8" : "application/json");
   };
 
   return (

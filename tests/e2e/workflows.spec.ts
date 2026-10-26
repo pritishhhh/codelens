@@ -16,9 +16,11 @@ const comparison = {
 
 test("drafts survive mode changes and reload; comparison examples can be swapped", async ({ page }) => {
   await page.goto("/");
+  await page.getByLabel("Save draft on this device", { exact: true }).check();
   const code = page.getByRole("textbox", { name: "Code", exact: true });
   await code.fill("const saved = 42;");
   await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await page.getByLabel("Save comparison on this device", { exact: true }).check();
   await page.getByRole("button", { name: "Load examples", exact: true }).click();
   const a = page.getByRole("textbox", { name: "Solution A", exact: true });
   const b = page.getByRole("textbox", { name: "Solution B", exact: true });
@@ -54,6 +56,7 @@ test("review preserves blank lines, filters issues, toggles fixes, and exports r
     await route.fulfill({ json: review });
   });
   await page.goto("/");
+  await page.getByLabel("Save draft on this device", { exact: true }).check();
   const code = "\n\n  const x = 1;";
   const editor = page.getByRole("textbox", { name: "Code", exact: true });
   await page.locator('input[type="file"][aria-label="Import file"]').setInputFiles({

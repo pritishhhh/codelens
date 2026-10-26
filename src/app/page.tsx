@@ -17,6 +17,7 @@ import { validateCompareResult } from "@/lib/validateCompare";
 import type { CompareResult } from "@/types/compare";
 import type { SupportedLanguage } from "@/types/language";
 import type { ReviewResult } from "@/types/review";
+import { SAMPLE_COMPARE, SAMPLE_REVIEW } from "@/lib/sampleReports";
 
 type AppMode = "review" | "compare";
 
@@ -34,6 +35,8 @@ export default function Home() {
   const [submittedCode, setSubmittedCode] = useState<SubmittedCode | null>(null);
   const [resultsKey, setResultsKey] = useState(0);
   const [submittedComparison, setSubmittedComparison] = useState<CompareInputSubmitPayload | null>(null);
+  const [isSample, setIsSample] = useState(false);
+  const [accessCode, setAccessCode] = useState("");
   const requestRef = useRef<AbortController | null>(null);
   const lastSubmission = useRef<CodeInputSubmitPayload | CompareInputSubmitPayload | null>(null);
 
@@ -46,6 +49,7 @@ export default function Home() {
   };
 
   const resetResults = () => {
+    setIsSample(false);
     setError(null);
     setReview(null);
     setCompareResult(null);
@@ -79,7 +83,7 @@ export default function Home() {
       const isReview = "code" in payload;
       const response = await fetch(isReview ? "/api/review" : "/api/compare", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(accessCode ? { Authorization: `Bearer ${accessCode}` } : {}) },
         body: JSON.stringify(payload),
         signal: controller.signal,
       });
@@ -135,10 +139,12 @@ export default function Home() {
     <div className="flex min-h-screen flex-col">
       <AppHeader />
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6 sm:px-6 sm:py-10 lg:py-12">
+      <a href="#workspace" className="sr-only z-50 rounded bg-indigo-600 p-3 text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4">Skip to workspace</a>
+      <main id="workspace" tabIndex={-1} className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-10 lg:py-12">
         <section className="mb-6 sm:mb-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="min-w-0">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-indigo-300">A fresh perspective on your code</p>
               <h2 className="text-xl font-semibold tracking-tight text-zinc-50 sm:text-2xl lg:text-3xl">
                 {mode === "review" ? "Review your code" : "Compare two solutions"}
               </h2>
@@ -198,16 +204,33 @@ export default function Home() {
           </div>
         </section>
 
+        <details className="mb-5 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3">
+          <summary className="cursor-pointer text-sm text-zinc-300">Live AI access <span className="ml-2 text-xs text-zinc-400">Sample reports work without a key</span></summary>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <label htmlFor="access-code" className="text-sm text-zinc-300">Deployment access code</label>
+            <input id="access-code" type="password" autoComplete="off" value={accessCode} onChange={(event) => setAccessCode(event.target.value)}
+              className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" placeholder="Provided by the deployment owner" />
+          </div>
+          <p className="mt-2 text-xs text-zinc-400">Required for live analysis on public deployments. Kept in memory for this visit; never included in exports. Sample buttons load a curated TypeScript example and replace the current snippet.</p>
+        </details>
+
         <section id="review-input" role="tabpanel" aria-labelledby="review-tab" hidden={mode !== "review"}
           className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
-          <CodeInput onSubmit={submitAnalysis} isLoading={isLoading} />
+          <CodeInput onSubmit={submitAnalysis} isLoading={isLoading} onSample={(payload) => {
+            cancelRequest(); resetResults(); lastSubmission.current = null;
+            setIsSample(true); setSubmittedCode(payload); setReview(SAMPLE_REVIEW);
+          }} />
         </section>
         <section id="compare-input" role="tabpanel" aria-labelledby="compare-tab" hidden={mode !== "compare"}
           className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
-          <CompareInput onSubmit={submitAnalysis} isLoading={isLoading} />
+          <CompareInput onSubmit={submitAnalysis} isLoading={isLoading} onSample={(payload) => {
+            cancelRequest(); resetResults(); lastSubmission.current = null;
+            setIsSample(true); setSubmittedComparison(payload); setCompareResult(SAMPLE_COMPARE);
+          }} />
         </section>
 
         <section aria-label="Results" className="mt-6 sm:mt-8">
+          {isSample && <p role="status" className="mb-4 rounded-lg border border-indigo-800 bg-indigo-950/40 px-4 py-3 text-sm text-indigo-200">Sample report · Curated feedback on synthetic TypeScript code. No AI request was made.</p>}
           {isLoading && (
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
               <div role="status" className="mb-4 flex items-center justify-between gap-3">
@@ -228,7 +251,7 @@ export default function Home() {
 
           {mode === "review" && review && submittedCode && !isLoading && (
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
-              <ReportExport report={{ kind: "review", result: review, ...submittedCode }} />
+              <ReportExport report={{ kind: "review", result: review, ...submittedCode, source: isSample ? "sample" : "ai" }} />
               <ErrorBoundary key={resultsKey} onReset={resetResults}>
                 <ResultsPanel review={review} code={submittedCode.code} />
               </ErrorBoundary>
@@ -237,7 +260,7 @@ export default function Home() {
 
           {mode === "compare" && compareResult && submittedComparison && !isLoading && (
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
-              <ReportExport report={{ kind: "compare", result: compareResult, ...submittedComparison }} />
+              <ReportExport report={{ kind: "compare", result: compareResult, ...submittedComparison, source: isSample ? "sample" : "ai" }} />
               <ErrorBoundary key={resultsKey} onReset={resetResults}>
                 <CompareResultsPanel result={compareResult} />
               </ErrorBoundary>
