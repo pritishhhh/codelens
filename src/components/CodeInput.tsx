@@ -23,9 +23,10 @@ interface CodeInputProps {
   onSubmit: (payload: CodeInputSubmitPayload) => void;
   isLoading?: boolean;
   onSample: (payload: CodeInputSubmitPayload) => void;
+  providerLabel: string;
 }
 
-export default function CodeInput({ onSubmit, onSample, isLoading = false }: CodeInputProps) {
+export default function CodeInput({ onSubmit, onSample, providerLabel, isLoading = false }: CodeInputProps) {
   const { draft, setDraft, ready, storageAvailable, persistenceEnabled, setPersistenceEnabled, saving } = usePersistentDraft(
     "codelens:review-draft:v1", EMPTY_REVIEW_DRAFT, isReviewDraft,
   );
@@ -151,7 +152,7 @@ export default function CodeInput({ onSubmit, onSample, isLoading = false }: Cod
           {isLoading ? "Analyzing..." : "Review Code"}
         </button>
       </div>
-      <p className="text-xs text-zinc-500">Ctrl/Cmd+Enter to review. Submitted code is sent to OpenAI; avoid secrets and private credentials.</p>
+      <p className="text-xs text-zinc-500">Ctrl/Cmd+Enter to review. Submitted code is sent to {providerLabel}; avoid secrets and private credentials.</p>
     </form>
   );
 }

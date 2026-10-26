@@ -29,7 +29,7 @@ test("formatting is undoable, syntax errors preserve code, and source downloads 
 
 test("sample review and comparison work without contacting AI and exports identify samples", async ({ page }) => {
   let requests = 0;
-  await page.route("**/api/**", (route) => { requests += 1; return route.abort(); });
+  await page.route(/\/api\/(review|compare)$/, (route) => { requests += 1; return route.abort(); });
   await page.goto("/");
   await page.getByRole("button", { name: "View sample review", exact: true }).click();
   await expect(page.getByRole("status").filter({ hasText: "Sample report" })).toBeVisible();

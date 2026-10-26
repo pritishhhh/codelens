@@ -5,7 +5,7 @@
 
 **A browser workspace for editing code, understanding tradeoffs, and getting structured review feedback.**
 
-CodeLens brings a real code editor, local source comparison, and AI-assisted review into one interface. It supports JavaScript, TypeScript, Python, Java, C++, and Go. Curated sample reports make the complete review and comparison experience available without an API key.
+CodeLens brings a real code editor, local source comparison, and AI-assisted review into one interface. It supports JavaScript, TypeScript, Python, Java, C++, and Go. Live analysis defaults to Groq, whose free plan supports the configured GPT-OSS 120B model. Curated sample reports make the complete review and comparison experience available without an API key.
 
 ![CodeLens workspace](docs/preview.png)
 
@@ -28,7 +28,7 @@ CodeLens reviews snippets; it does not compile or execute them. The annotated re
 
 ## Technology
 
-Next.js 15 App Router · React · TypeScript · Tailwind CSS · CodeMirror 6 · Prettier · jsdiff · OpenAI Node SDK · Playwright · Node test runner
+Next.js 15 App Router · React · TypeScript · Tailwind CSS · CodeMirror 6 · Prettier · jsdiff · Groq API through the OpenAI-compatible Node SDK · Playwright · Node test runner
 
 The API key remains on the server. Formatting, text comparison, imports, downloads, draft storage, and sample reports run locally in the browser.
 
@@ -45,7 +45,7 @@ npm run dev
 
 Open [localhost:3000](http://localhost:3000). The editor and sample reports work immediately without environment variables.
 
-Live AI analysis requires a server-side API key:
+Live AI analysis requires a personal Groq API key from the [Groq console](https://console.groq.com/keys). The [Free Plan](https://console.groq.com/docs/rate-limits) has request and token limits; exact allowances depend on the account. Create a key in that account and store it only in the server environment:
 
 ```bash
 cp .env.example .env.local
@@ -55,11 +55,15 @@ On PowerShell, the equivalent is `Copy-Item .env.example .env.local`.
 
 | Variable | Purpose |
 | --- | --- |
-| `OPENAI_API_KEY` | Server-only provider key for live analysis. Never use a `NEXT_PUBLIC_` prefix. |
-| `OPENAI_MODEL` | Optional model override; defaults to `gpt-4o`. Must support Chat Completions and JSON object output. |
+| `AI_PROVIDER` | Defaults to `groq`. Only an explicit `openai` value enables the optional paid OpenAI provider. |
+| `GROQ_API_KEY` | Server-only key from a Groq account. Never use a `NEXT_PUBLIC_` prefix. |
+| `GROQ_MODEL` | Optional Groq model override; defaults to `openai/gpt-oss-120b`. Must support Chat Completions and JSON object output. |
 | `CODELENS_ACCESS_TOKEN` | Private deployment access code. Required for live AI in production; optional during local development. |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | Optional settings used only with `AI_PROVIDER=openai`; the OpenAI model defaults to `gpt-4o`. |
 
-Restart the development server after changing environment variables. When an access token is configured, enter it in **Live AI access** in the workspace. The code is held in memory for the current visit and sent only with analysis requests.
+Restart the development server after changing environment variables. When an access token is configured, enter it in **Live AI access** in the workspace. The code is held in memory for the current visit and sent only with analysis requests. The workspace identifies the active provider using public configuration metadata; API keys and deployment access tokens are never returned by that endpoint.
+
+There is no automatic fallback from Groq to paid OpenAI requests. A missing Groq key returns 503, and exhausted provider quotas return 429. An existing `OPENAI_API_KEY` is ignored unless OpenAI is explicitly selected. Free-plan availability and limits are controlled by Groq; use a Free Plan account to avoid opting into paid usage.
 
 ## Deploy on Vercel
 
@@ -67,10 +71,10 @@ The repository includes `vercel.json`, uses the Next.js framework preset, and bu
 
 1. Import this GitHub repository into Vercel, or use the deploy button above.
 2. Select **Node.js 22.x** and keep the repository root as the project directory.
-3. For live analysis, configure `OPENAI_API_KEY` and a long, random `CODELENS_ACCESS_TOKEN` as server environment variables. `OPENAI_MODEL` is optional.
+3. For live analysis, configure `GROQ_API_KEY` and a long, random `CODELENS_ACCESS_TOKEN` as server environment variables. `AI_PROVIDER=groq` is the default; `GROQ_MODEL` is optional.
 4. Deploy. Subsequent pushes to the connected branch trigger Vercel builds.
 
-Without a production access token, live analysis returns 503 and the editor and sample reports remain usable. This prevents an accidental public deployment from exposing an unrestricted paid AI endpoint. The access code can be shared privately with intended reviewers; it is separate from the provider API key.
+Without a production access token, live analysis returns 503 and the editor and sample reports remain usable. This prevents an accidental public deployment from exposing unrestricted access to the provider account's quota. The access code can be shared privately with intended reviewers; it is separate from the provider API key.
 
 Both API routes use the Node.js runtime with a 60-second maximum duration. Provider requests have a 45-second timeout with automatic retries disabled. Responses containing analysis are marked `no-store`. A static-only export cannot run the API routes.
 
@@ -128,7 +132,7 @@ GitHub Actions runs lint, type checking, unit tests, a production build, and bro
 
 ## Privacy and limitations
 
-Source is sent to OpenAI only when live analysis is submitted. Imports, formatting, samples, and local diffs do not transmit source. Optional saved drafts are plaintext in this browser's storage. Turning saving off removes that draft's stored source, while preserving the current editor contents until the page is closed or reloaded.
+Source is sent to the selected provider (Groq by default) only when live analysis is submitted. Imports, formatting, samples, and local diffs do not transmit source. Optional saved drafts are plaintext in this browser's storage. Turning saving off removes that draft's stored source, while preserving the current editor contents until the page is closed or reloaded.
 
 AI feedback may be incorrect or incomplete; it needs human review. Cancelling a request cannot guarantee cancellation of provider work or charges already incurred. Both comparison snippets use one selected language. Mobile tests use a Chromium viewport rather than a physical device or Safari.
 

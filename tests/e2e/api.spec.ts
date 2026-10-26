@@ -15,3 +15,11 @@ test("same-origin browser posts reach the real API and other origins are rejecte
     expect(blocked.status()).toBe(403);
   }
 });
+
+test("the workspace names the provider returned by public configuration", async ({ page }) => {
+  await page.route("**/api/config", (route) => route.fulfill({ json: { provider: "groq", label: "Groq", model: "openai/gpt-oss-120b" } }));
+  await page.goto("/");
+  await expect(page.getByText("Submitted code is sent to Groq", { exact: false }).first()).toBeVisible();
+  await page.getByRole("tab", { name: "Compare", exact: true }).click();
+  await expect(page.getByText("Submitted code is sent to Groq", { exact: false }).last()).toBeVisible();
+});

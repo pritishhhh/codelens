@@ -37,10 +37,23 @@ export default function Home() {
   const [submittedComparison, setSubmittedComparison] = useState<CompareInputSubmitPayload | null>(null);
   const [isSample, setIsSample] = useState(false);
   const [accessCode, setAccessCode] = useState("");
+  const [providerLabel, setProviderLabel] = useState("the configured AI provider");
   const requestRef = useRef<AbortController | null>(null);
   const lastSubmission = useRef<CodeInputSubmitPayload | CompareInputSubmitPayload | null>(null);
 
   useEffect(() => () => requestRef.current?.abort(), []);
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/config", { signal: controller.signal, cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const data: unknown = await response.json();
+        if (!controller.signal.aborted && data && typeof data === "object" && "label" in data && (data.label === "Groq" || data.label === "OpenAI")) {
+          setProviderLabel(data.label);
+        }
+      }).catch(() => {});
+    return () => controller.abort();
+  }, []);
 
   const cancelRequest = () => {
     requestRef.current?.abort();
@@ -206,6 +219,7 @@ export default function Home() {
 
         <details className="mb-5 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3">
           <summary className="cursor-pointer text-sm text-zinc-300">Live AI access <span className="ml-2 text-xs text-zinc-400">Sample reports work without a key</span></summary>
+          <p className="mt-3 text-sm text-indigo-300">Analysis provider: {providerLabel}</p>
           <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
             <label htmlFor="access-code" className="text-sm text-zinc-300">Deployment access code</label>
             <input id="access-code" type="password" autoComplete="off" value={accessCode} onChange={(event) => setAccessCode(event.target.value)}
@@ -216,14 +230,14 @@ export default function Home() {
 
         <section id="review-input" role="tabpanel" aria-labelledby="review-tab" hidden={mode !== "review"}
           className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
-          <CodeInput onSubmit={submitAnalysis} isLoading={isLoading} onSample={(payload) => {
+          <CodeInput onSubmit={submitAnalysis} providerLabel={providerLabel} isLoading={isLoading} onSample={(payload) => {
             cancelRequest(); resetResults(); lastSubmission.current = null;
             setIsSample(true); setSubmittedCode(payload); setReview(SAMPLE_REVIEW);
           }} />
         </section>
         <section id="compare-input" role="tabpanel" aria-labelledby="compare-tab" hidden={mode !== "compare"}
           className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 sm:p-6">
-          <CompareInput onSubmit={submitAnalysis} isLoading={isLoading} onSample={(payload) => {
+          <CompareInput onSubmit={submitAnalysis} providerLabel={providerLabel} isLoading={isLoading} onSample={(payload) => {
             cancelRequest(); resetResults(); lastSubmission.current = null;
             setIsSample(true); setSubmittedComparison(payload); setCompareResult(SAMPLE_COMPARE);
           }} />

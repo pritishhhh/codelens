@@ -4,7 +4,9 @@ import { chromium } from "@playwright/test";
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1100 }, deviceScaleFactor: 1 });
+  const configuration = page.waitForResponse((response) => response.url().endsWith("/api/config"));
   await page.goto("http://127.0.0.1:3000");
+  await configuration;
   await page.getByRole("button", { name: "View sample review", exact: true }).click();
   await page.getByRole("status").filter({ hasText: "Sample report" }).waitFor();
   await page.evaluate(() => document.fonts.ready);

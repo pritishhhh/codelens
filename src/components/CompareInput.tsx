@@ -25,9 +25,10 @@ interface CompareInputProps {
   onSubmit: (payload: CompareInputSubmitPayload) => void;
   isLoading?: boolean;
   onSample: (payload: CompareInputSubmitPayload) => void;
+  providerLabel: string;
 }
 
-export default function CompareInput({ onSubmit, onSample, isLoading = false }: CompareInputProps) {
+export default function CompareInput({ onSubmit, onSample, providerLabel, isLoading = false }: CompareInputProps) {
   const { draft, setDraft, ready, storageAvailable, persistenceEnabled, setPersistenceEnabled, saving } = usePersistentDraft(
     "codelens:compare-draft:v1", EMPTY_COMPARE_DRAFT, isCompareDraft,
   );
@@ -200,7 +201,7 @@ export default function CompareInput({ onSubmit, onSample, isLoading = false }: 
           {isLoading ? "Comparing..." : "Compare Solutions"}
         </button>
       </div>
-      <p className="text-xs text-zinc-500">Ctrl/Cmd+Enter to compare. Submitted code is sent to OpenAI; avoid secrets and private credentials.</p>
+      <p className="text-xs text-zinc-500">Ctrl/Cmd+Enter to compare. Submitted code is sent to {providerLabel}; avoid secrets and private credentials.</p>
     </form>
   );
 }

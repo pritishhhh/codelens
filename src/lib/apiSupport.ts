@@ -1,6 +1,7 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
+import { createAIClient, getAIProviderConfig } from "./aiProvider";
 
 export const MAX_REQUEST_BYTES = 128 * 1024;
 
@@ -74,11 +75,13 @@ export async function readJsonBody(request: Request): Promise<unknown> {
   }
 }
 
-export function getOpenAIClient(): OpenAI {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new RequestError("Live analysis is unavailable. Explore a sample report instead.", 503);
+export function getAIClient() {
+  let config: ReturnType<typeof getAIProviderConfig>;
+  try { config = getAIProviderConfig(); }
+  catch { throw new RequestError("The AI provider is not configured correctly. Explore a sample report instead.", 503); }
+  if (!config.apiKey) throw new RequestError(`Live analysis is not configured for ${config.label}. Explore a sample report instead.`, 503);
   // Complete before Vercel's 60-second function deadline; retries could exceed it.
-  return new OpenAI({ apiKey, timeout: 45_000, maxRetries: 0 });
+  return { client: createAIClient(config), model: config.model };
 }
 
 export function apiErrorResponse(error: unknown, signal: AbortSignal): NextResponse {

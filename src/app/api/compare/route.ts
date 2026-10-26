@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { OPENAI_MODEL } from "@/lib/constants";
 import { parseJsonObject } from "@/lib/parseJsonResponse";
 import { buildCompareUserPrompt, COMPARE_SYSTEM_PROMPT } from "@/lib/prompts";
 import { validateCompareResult } from "@/lib/validateCompare";
 import { LANGUAGE_LABELS } from "@/types/language";
-import { apiErrorResponse, authorizeAnalysis, getOpenAIClient, readJsonBody } from "@/lib/apiSupport";
+import { apiErrorResponse, authorizeAnalysis, getAIClient, readJsonBody } from "@/lib/apiSupport";
 import { requestCode, requestLanguage, requestObject } from "@/lib/validateRequest";
 
 export const runtime = "nodejs";
@@ -17,8 +16,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     const solutionA = requestCode(body.solutionA, "solutionA");
     const solutionB = requestCode(body.solutionB, "solutionB");
     const language = requestLanguage(body.language);
-    const completion = await getOpenAIClient().chat.completions.create({
-      model: process.env.OPENAI_MODEL || OPENAI_MODEL,
+    const { client, model } = getAIClient();
+    const completion = await client.chat.completions.create({
+      model,
       max_tokens: 4096,
       response_format: { type: "json_object" },
       messages: [
